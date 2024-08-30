@@ -5,11 +5,12 @@ import { map } from 'rxjs/operators';
 @Injectable({
   providedIn: 'root'
 })
-export class ScannerService {
+export class RegistrationToolService {
   private inputBuffer: string = '';
   private lastTimestamp: number | null = null;
   private readonly speedThreshold = 30; // Threshold in ms to detect scanner input
   private readonly idleThreshold = 100; // Threshold in ms to finalize the scanner input
+  private readonly minScannerLength = 5; // Minimum length to consider input as scanner input
 
   constructor() {
     this.startListening();
@@ -33,7 +34,7 @@ export class ScannerService {
       if (timeDifference > this.idleThreshold) {
         // If the time difference exceeds idleThreshold, finalize the previous input
         if (this.inputBuffer) {
-          this.handleCompleteInput(this.inputBuffer);
+          this.finalizeInput(this.inputBuffer);
           this.inputBuffer = ''; // Reset the buffer for the next input sequence
         }
       }
@@ -44,7 +45,7 @@ export class ScannerService {
       } else {
         // If the time difference exceeds speedThreshold but is within idleThreshold, finalize input
         if (this.inputBuffer) {
-          this.handleCompleteInput(this.inputBuffer);
+          this.finalizeInput(this.inputBuffer);
           this.inputBuffer = ''; // Reset the buffer for the next input sequence
         }
         this.inputBuffer += event.key; // Start a new buffer sequence with the current key
@@ -57,10 +58,24 @@ export class ScannerService {
     this.lastTimestamp = event.timestamp; // Update the last timestamp
   }
 
-  private handleCompleteInput(input: string) {
-    console.log('Scanner input detected:', input);
-    // Implement your logic to handle the complete scanner input here
-    this.processScannerInput(input);
+  private finalizeInput(input: string) {
+    if (this.isScannerInput(input)) {
+      console.log('Scanner input detected:', input);
+      this.processScannerInput(input);
+    } else {
+      console.log('Ignored non-scanner input:', input);
+      // Optionally log or ignore this input
+    }
+  }
+
+  private isScannerInput(input: string): boolean {
+    // If the input is shorter than expected for a scanner, consider it a human input
+    if (input.length < this.minScannerLength) {
+      return false;
+    }
+
+    // Further checks can be added here if necessary
+    return true;
   }
 
   private processScannerInput(input: string) {
