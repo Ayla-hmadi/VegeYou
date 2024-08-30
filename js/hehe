@@ -10,6 +10,7 @@ export class RegistrationToolService {
   private lastTimestamp: number | null = null;
   private readonly speedThreshold = 30; // Threshold in ms to detect scanner input
   private readonly minScannerLength = 5; // Minimum length to consider input as scanner input
+  private shiftPressed: boolean = false;
 
   constructor() {
     this.startListening();
@@ -20,55 +21,81 @@ export class RegistrationToolService {
       .pipe(
         map(event => ({
           key: event.key,
-          timestamp: event.timeStamp
+          timestamp: event.timeStamp,
+          shiftKey: event.shiftKey
         }))
       )
       .subscribe(event => this.handleKey(event));
   }
 
-  private handleKey(event: { key: string; timestamp: number }) {
+  private handleKey(event: { key: string; timestamp: number; shiftKey: boolean }) {
+    // Handle Shift key logic
+    if (event.key === 'Shift') {
+      this.shiftPressed = true;
+      return;
+    }
+
+    // Handle Enter key as input finalizer
     if (event.key === 'Enter') {
-      // When Enter is pressed, finalize and process the input
       this.finalizeInput(this.inputBuffer);
       this.inputBuffer = ''; // Reset the buffer for the next input sequence
       this.lastTimestamp = null; // Reset the timestamp
-    } else {
-      if (this.lastTimestamp) {
-        const timeDifference = event.timestamp - this.lastTimestamp;
-
-        if (timeDifference < this.speedThreshold) {
-          // If the time difference is within the speed threshold, it's likely scanner input
-          this.inputBuffer += event.key;
-        } else {
-          // If the time difference is too large, reset the buffer (potential new input)
-          this.inputBuffer = event.key;
-        }
-      } else {
-        // First key press in the sequence, start the buffer
-        this.inputBuffer += event.key;
-      }
-
-      this.lastTimestamp = event.timestamp; // Update the last timestamp
+      this.shiftPressed = false; // Reset the shift key state
+      return;
     }
+
+    // If the Shift key was pressed, capitalize the letter
+    const actualKey = this.shiftPressed ? event.key.toUpperCase() : event.key;
+    this.shiftPressed = false; // Reset shift state after using it
+
+    if (this.lastTimestamp) {
+      const timeDifference = event.timestamp - this.lastTimestamp;
+
+      if (timeDifference < this.speedThreshold) {
+        // If the time difference is within the speed threshold, it's likely scanner input
+        this.inputBuffer += actualKey;
+      } else {
+        // If the time difference is too large, reset the buffer (potential new input)
+        this.inputBuffer = actualKey;
+      }
+    } else {
+      // First key press in the sequence, start the buffer
+      this.inputBuffer += actualKey;
+    }
+
+    this.lastTimestamp = event.timestamp; // Update the last timestamp
   }
 
   private finalizeInput(input: string) {
-    if (this.isScannerInput(input)) {
-      console.log('Scanner input detected:', input);
-      this.processScannerInput(input);
+    if (this.isTagScannerInput(input)) {
+      console.log('Tag scanner input detected:', input);
+      this.processTagScannerInput(input);
+    } else if (this.isBarcodeScannerInput(input)) {
+      console.log('Barcode scanner input detected:', input);
+      this.processBarcodeScannerInput(input);
     } else {
       console.log('Ignored non-scanner input:', input);
       // Optionally log or ignore this input
     }
   }
 
-  private isScannerInput(input: string): boolean {
-    // If the input is shorter than expected for a scanner, consider it a human input
-    return input.length >= this.minScannerLength;
+  private isBarcodeScannerInput(input: string): boolean {
+    // Anything that doesn't start with "E004" and has a valid length is considered a barcode
+    return !input.startsWith('E004') && input.length >= this.minScannerLength;
   }
 
-  private processScannerInput(input: string) {
-    // Add your scanner input processing logic here
-    console.log('Processing scanner input:', input);
+  private isTagScannerInput(input: string): boolean {
+    // Tag input specifically starts with "E004"
+    return input.startsWith('E004') && input.length >= this.minScannerLength;
+  }
+
+  private processBarcodeScannerInput(input: string) {
+    // Add your barcode scanner input processing logic here
+    console.log('Processing barcode scanner input:', input);
+  }
+
+  private processTagScannerInput(input: string) {
+    // Add your tag scanner input processing logic here
+    console.log('Processing tag scanner input:', input);
   }
 }
