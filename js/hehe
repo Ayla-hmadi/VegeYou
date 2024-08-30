@@ -9,7 +9,6 @@ export class RegistrationToolService {
   private inputBuffer: string = '';
   private lastTimestamp: number | null = null;
   private readonly speedThreshold = 30; // Threshold in ms to detect scanner input
-  private readonly idleThreshold = 100; // Threshold in ms to finalize the scanner input
   private readonly minScannerLength = 5; // Minimum length to consider input as scanner input
 
   constructor() {
@@ -28,34 +27,29 @@ export class RegistrationToolService {
   }
 
   private handleKey(event: { key: string; timestamp: number }) {
-    if (this.lastTimestamp) {
-      const timeDifference = event.timestamp - this.lastTimestamp;
-
-      if (timeDifference > this.idleThreshold) {
-        // If the time difference exceeds idleThreshold, finalize the previous input
-        if (this.inputBuffer) {
-          this.finalizeInput(this.inputBuffer);
-          this.inputBuffer = ''; // Reset the buffer for the next input sequence
-        }
-      }
-
-      if (timeDifference < this.speedThreshold) {
-        // If the time difference is within the speed threshold, it's likely scanner input
-        this.inputBuffer += event.key;
-      } else {
-        // If the time difference exceeds speedThreshold but is within idleThreshold, finalize input
-        if (this.inputBuffer) {
-          this.finalizeInput(this.inputBuffer);
-          this.inputBuffer = ''; // Reset the buffer for the next input sequence
-        }
-        this.inputBuffer += event.key; // Start a new buffer sequence with the current key
-      }
+    if (event.key === 'Enter') {
+      // When Enter is pressed, finalize and process the input
+      this.finalizeInput(this.inputBuffer);
+      this.inputBuffer = ''; // Reset the buffer for the next input sequence
+      this.lastTimestamp = null; // Reset the timestamp
     } else {
-      // First key press, start the buffer
-      this.inputBuffer += event.key;
-    }
+      if (this.lastTimestamp) {
+        const timeDifference = event.timestamp - this.lastTimestamp;
 
-    this.lastTimestamp = event.timestamp; // Update the last timestamp
+        if (timeDifference < this.speedThreshold) {
+          // If the time difference is within the speed threshold, it's likely scanner input
+          this.inputBuffer += event.key;
+        } else {
+          // If the time difference is too large, reset the buffer (potential new input)
+          this.inputBuffer = event.key;
+        }
+      } else {
+        // First key press in the sequence, start the buffer
+        this.inputBuffer += event.key;
+      }
+
+      this.lastTimestamp = event.timestamp; // Update the last timestamp
+    }
   }
 
   private finalizeInput(input: string) {
@@ -70,12 +64,7 @@ export class RegistrationToolService {
 
   private isScannerInput(input: string): boolean {
     // If the input is shorter than expected for a scanner, consider it a human input
-    if (input.length < this.minScannerLength) {
-      return false;
-    }
-
-    // Further checks can be added here if necessary
-    return true;
+    return input.length >= this.minScannerLength;
   }
 
   private processScannerInput(input: string) {
