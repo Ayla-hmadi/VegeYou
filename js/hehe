@@ -1,14 +1,15 @@
 import { Injectable } from '@angular/core';
 import { fromEvent } from 'rxjs';
-import { map, filter } from 'rxjs/operators';
+import { map, bufferTime } from 'rxjs/operators';
 
 @Injectable({
   providedIn: 'root'
 })
 export class RegistrationToolService {
   private inputBuffer: string = '';
-  private timestamps: number[] = [];
-  private readonly speedThreshold = 30; // Threshold in ms to differentiate scanner input
+  private lastTimestamp: number | null = null;
+  private readonly speedThreshold = 30; // Threshold in ms to detect scanner input
+  private readonly idleThreshold = 100; // Threshold in ms to finalize the scanner input
 
   constructor() {
     this.startListening();
@@ -17,63 +18,56 @@ export class RegistrationToolService {
   private startListening() {
     fromEvent<KeyboardEvent>(document, 'keydown')
       .pipe(
-        map(event => {
-          this.timestamps.push(event.timeStamp);
-          return event.key;
-        }),
-        filter(key => this.handleKey(key))
+        map(event => ({
+          key: event.key,
+          timestamp: event.timeStamp
+        })),
+        bufferTime(10) // Process events in small batches for efficiency
       )
-      .subscribe();
+      .subscribe(events => this.handleKeys(events));
   }
 
-  private handleKey(key: string): boolean {
-    if (key === 'Enter') {
-      // Process the complete input when Enter is pressed
-      this.handleCompleteInput(this.inputBuffer);
-      this.inputBuffer = '';  // Reset the buffer for the next input sequence
-      this.timestamps = [];  // Reset timestamps
-      return false;  // Stop further processing for this Enter key event
-    } else {
-      this.inputBuffer += key;  // Accumulate the key into the buffer
-      return true;  // Continue listening for more keys
-    }
+  private handleKeys(events: { key: string; timestamp: number }[]) {
+    events.forEach(event => {
+      if (this.lastTimestamp) {
+        const timeDifference = event.timestamp - this.lastTimestamp;
+
+        if (timeDifference > this.idleThreshold) {
+          // If the time difference exceeds idleThreshold, finalize the previous input
+          if (this.inputBuffer) {
+            this.handleCompleteInput(this.inputBuffer);
+            this.inputBuffer = ''; // Reset the buffer for the next input sequence
+          }
+        }
+
+        if (timeDifference < this.speedThreshold) {
+          // If the time difference is within the speed threshold, it's likely scanner input
+          this.inputBuffer += event.key;
+        } else {
+          // If the time difference exceeds speedThreshold but is within idleThreshold, finalize input
+          if (this.inputBuffer) {
+            this.handleCompleteInput(this.inputBuffer);
+            this.inputBuffer = ''; // Reset the buffer for the next input sequence
+          }
+          this.inputBuffer += event.key; // Start a new buffer sequence with the current key
+        }
+      } else {
+        // First key press, start the buffer
+        this.inputBuffer += event.key;
+      }
+
+      this.lastTimestamp = event.timestamp; // Update the last timestamp
+    });
   }
 
   private handleCompleteInput(input: string) {
-    console.log('Complete input detected:', input);
-
-    if (this.isScannerInput()) {
-      console.log('Scanner input:', input);
-      // Handle scanner input
-      this.processScannerInput(input);
-    } else {
-      console.log('Human input:', input);
-      // Handle human input
-      this.processHumanInput(input);
-    }
-  }
-
-  private isScannerInput(): boolean {
-    if (this.timestamps.length < 2) return false;
-
-    const intervals = this.timestamps.slice(1).map((time, index) => time - this.timestamps[index]);
-
-    // Check if most intervals are below the speed threshold
-    const fastIntervals = intervals.filter(interval => interval < this.speedThreshold);
-
-    // Determine if the majority of keystrokes were fast (scanner-like)
-    return fastIntervals.length >= intervals.length * 0.8;  // Example: 80% of intervals are fast
+    console.log('Scanner input detected:', input);
+    // Implement your logic to handle the complete scanner input here
+    this.processScannerInput(input);
   }
 
   private processScannerInput(input: string) {
-    // Implement your logic for handling scanner input
+    // Add your scanner input processing logic here
     console.log('Processing scanner input:', input);
-    // Add your scanner processing logic here
-  }
-
-  private processHumanInput(input: string) {
-    // Implement your logic for handling human input
-    console.log('Processing human input:', input);
-    // Add your human processing logic here
   }
 }
