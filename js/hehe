@@ -1,0 +1,79 @@
+import { Injectable } from '@angular/core';
+import { fromEvent } from 'rxjs';
+import { map, filter } from 'rxjs/operators';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class RegistrationToolService {
+  private inputBuffer: string = '';
+  private timestamps: number[] = [];
+  private readonly speedThreshold = 30; // Threshold in ms to differentiate scanner input
+
+  constructor() {
+    this.startListening();
+  }
+
+  private startListening() {
+    fromEvent<KeyboardEvent>(document, 'keydown')
+      .pipe(
+        map(event => {
+          this.timestamps.push(event.timeStamp);
+          return event.key;
+        }),
+        filter(key => this.handleKey(key))
+      )
+      .subscribe();
+  }
+
+  private handleKey(key: string): boolean {
+    if (key === 'Enter') {
+      // Process the complete input when Enter is pressed
+      this.handleCompleteInput(this.inputBuffer);
+      this.inputBuffer = '';  // Reset the buffer for the next input sequence
+      this.timestamps = [];  // Reset timestamps
+      return false;  // Stop further processing for this Enter key event
+    } else {
+      this.inputBuffer += key;  // Accumulate the key into the buffer
+      return true;  // Continue listening for more keys
+    }
+  }
+
+  private handleCompleteInput(input: string) {
+    console.log('Complete input detected:', input);
+
+    if (this.isScannerInput()) {
+      console.log('Scanner input:', input);
+      // Handle scanner input
+      this.processScannerInput(input);
+    } else {
+      console.log('Human input:', input);
+      // Handle human input
+      this.processHumanInput(input);
+    }
+  }
+
+  private isScannerInput(): boolean {
+    if (this.timestamps.length < 2) return false;
+
+    const intervals = this.timestamps.slice(1).map((time, index) => time - this.timestamps[index]);
+
+    // Check if most intervals are below the speed threshold
+    const fastIntervals = intervals.filter(interval => interval < this.speedThreshold);
+
+    // Determine if the majority of keystrokes were fast (scanner-like)
+    return fastIntervals.length >= intervals.length * 0.8;  // Example: 80% of intervals are fast
+  }
+
+  private processScannerInput(input: string) {
+    // Implement your logic for handling scanner input
+    console.log('Processing scanner input:', input);
+    // Add your scanner processing logic here
+  }
+
+  private processHumanInput(input: string) {
+    // Implement your logic for handling human input
+    console.log('Processing human input:', input);
+    // Add your human processing logic here
+  }
+}
