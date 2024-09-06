@@ -1,0 +1,112 @@
+import { TestBed } from '@angular/core/testing';
+import { ScannerService } from './scanner.service';
+import { NotificationService } from '@feShared/components/notification/notification.service';
+import { Subject } from 'rxjs';
+import { ScannerInputEvent } from './scanner-utils';
+import { Notification } from '@feShared/components/notification/notification.model';
+
+describe('ScannerService', () => {
+  let service: ScannerService;
+  let notificationServiceSpy: jasmine.SpyObj<NotificationService>;
+  let scannerInputSubject: Subject<ScannerInputEvent>;
+
+  beforeEach(() => {
+    const spy = jasmine.createSpyObj('NotificationService', ['notify']);
+    scannerInputSubject = new Subject<ScannerInputEvent>();
+
+    TestBed.configureTestingModule({
+      providers: [
+        ScannerService,
+        { provide: NotificationService, useValue: spy },
+      ],
+    });
+
+    service = TestBed.inject(ScannerService);
+    notificationServiceSpy = TestBed.inject(NotificationService) as jasmine.SpyObj<NotificationService>;
+  });
+
+  it('should be created', () => {
+    expect(service).toBeTruthy();
+  });
+
+  it('should start listening for keyboard events', () => {
+    spyOn(service, 'startListening');
+    service['startListening']();
+    expect(service['startListening']).toHaveBeenCalled();
+  });
+
+  it('should process keypress as human input when time difference exceeds threshold', () => {
+    const mockEvent = { key: 'A', timestamp: 500, shiftKey: false } as any;
+
+    service['lastTimestamp'] = 400;
+    spyOn(service, 'handleKeyPress').and.callThrough();
+    service['handleKeyPress'](mockEvent);
+
+    expect(service['inputBuffer']).toEqual('A');
+    expect(service['lastTimestamp']).toEqual(mockEvent.timestamp);
+  });
+
+  it('should append key to input buffer when time difference is less than speedThreshold', () => {
+    const mockEvent = { key: 'A', timestamp: 35, shiftKey: false } as any;
+
+    service['lastTimestamp'] = 10;
+    spyOn(service, 'handleKeyPress').and.callThrough();
+    service['handleKeyPress'](mockEvent);
+
+    expect(service['inputBuffer']).toEqual('A');
+  });
+
+  it('should emit scanner input event when Enter key is pressed and within threshold', () => {
+    const mockEvent = { key: 'Enter', timestamp: 60, shiftKey: false } as any;
+
+    service['lastTimestamp'] = 50;
+    service['inputBuffer'] = 'ABC123';
+
+    spyOn(service['scannerInputEventObservable'], 'next').and.callThrough();
+    service['handleEnterKeyPress'](mockEvent);
+
+    expect(service['scannerInputEventObservable'].next).toHaveBeenCalledWith({
+      scannerInput: 'ABC123',
+      isTag: false, // Assuming isRfidTagInput returns false in this case
+    });
+  });
+
+  it('should clear input buffer after Enter key press is handled', () => {
+    const mockEvent = { key: 'Enter', timestamp: 100, shiftKey: false } as any;
+
+    service['lastTimestamp'] = 50;
+    service['inputBuffer'] = 'ABC123';
+    service['handleEnterKeyPress'](mockEvent);
+
+    expect(service['inputBuffer']).toEqual('');
+    expect(service['lastTimestamp']).toBeNull();
+  });
+
+  it('should notify when there are no observers for scanner input', () => {
+    const mockEvent = { key: 'Enter', timestamp: 60, shiftKey: false } as any;
+
+    service['lastTimestamp'] = 50;
+    service['inputBuffer'] = 'ABC123';
+    spyOn(service['scannerInputEventObservable'], 'observers').and.returnValue([]);
+    spyOn(service, 'finalizeScannerInput').and.callThrough();
+    service['handleEnterKeyPress'](mockEvent);
+
+    expect(notificationServiceSpy.notify).toHaveBeenCalledWith(jasmine.objectContaining({
+      state: 'warning',
+      message: 'Are you trying to scan? Scanned ABC123',
+      autoCloseTimer: 2000,
+    }));
+  });
+
+  it('should not emit input or show notification when input is ignored as human typing', () => {
+    const mockEvent = { key: 'Enter', timestamp: 500, shiftKey: false } as any;
+
+    service['lastTimestamp'] = 100;
+    service['inputBuffer'] = 'ABC123';
+    spyOn(service['scannerInputEventObservable'], 'next').and.callThrough();
+    service['handleEnterKeyPress'](mockEvent);
+
+    expect(service['scannerInputEventObservable'].next).not.toHaveBeenCalled();
+    expect(notificationServiceSpy.notify).not.toHaveBeenCalled();
+  });
+});
