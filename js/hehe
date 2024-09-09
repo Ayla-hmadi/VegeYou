@@ -1,18 +1,22 @@
-it('should emit scanner input event if observers exist', () => {
-  const input = 'XYZ789';
+it('should finalize scanner input on Enter key press', () => {
+  const enterKeyPressEvent: KeyPressInputEvent = {
+    key: 'Enter',
+    timestamp: 150,
+    shiftKey: false
+  };
   
-  // Subscribe to the observable to simulate observers
-  service.getScannerObservable().subscribe();
+  // Set the input buffer to simulate a scanned input
+  service['inputBuffer'] = 'AB123';
 
-  // Spy on the next() method of the observable
-  const nextSpy = jest.spyOn(service['scannerInputEventObservable'], 'next');
+  // Simulate the last keypress timestamp to be within the threshold (set to less than 30ms before Enter)
+  service['lastTimestamp'] = 120; // Enter is at 150, so difference is 30ms (right on threshold)
+
+  // Spy on the finalizeScannerInput method to see if it gets called
+  const finalizeSpy = jest.spyOn(service as any, 'finalizeScannerInput');
   
-  // Call finalizeScannerInput
-  service['finalizeScannerInput'](input);
-  
-  // Expect next() to be called with the correct input data
-  expect(nextSpy).toHaveBeenCalledWith({
-    scannerInput: input,
-    isTag: false
-  });
+  // Call the handler for the Enter key press
+  service['handleEnterKeyPress'](enterKeyPressEvent);
+
+  // Ensure finalizeScannerInput was called with the correct input buffer
+  expect(finalizeSpy).toHaveBeenCalledWith('AB123');
 });
