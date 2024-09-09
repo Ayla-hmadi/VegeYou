@@ -6,11 +6,12 @@ import { KeyPressInputEvent } from './scanner-utils';
 
 describe('ScannerService', () => {
   let service: ScannerService;
-  let mockNotificationService: jasmine.SpyObj<NotificationService>;
-  let keyboardEvent: any;
+  let mockNotificationService: jest.Mocked<NotificationService>;
 
   beforeEach(() => {
-    mockNotificationService = jasmine.createSpyObj('NotificationService', ['notify']);
+    mockNotificationService = {
+      notify: jest.fn(),
+    } as jest.Mocked<NotificationService>;
     
     TestBed.configureTestingModule({
       providers: [
@@ -63,11 +64,11 @@ describe('ScannerService', () => {
     };
     
     service['inputBuffer'] = 'AB123';
-    spyOn(service['scannerInputEventObservable'], 'next');
+    const nextSpy = jest.spyOn(service['scannerInputEventObservable'], 'next');
     
     service['handleEnterKeyPress'](event);
 
-    expect(service['scannerInputEventObservable'].next).toHaveBeenCalledWith({
+    expect(nextSpy).toHaveBeenCalledWith({
       scannerInput: 'AB123',
       isTag: false
     });
@@ -97,7 +98,7 @@ describe('ScannerService', () => {
     
     service['handleEnterKeyPress'](event);
 
-    expect(mockNotificationService.notify).toHaveBeenCalledWith(jasmine.objectContaining({
+    expect(mockNotificationService.notify).toHaveBeenCalledWith(expect.objectContaining({
       state: 'warning',
       message: 'Are you trying to scan? Scanned ABCD123',
       autoCloseTimer: 2000
@@ -106,10 +107,10 @@ describe('ScannerService', () => {
 
   it('should emit scanner input event if observers exist', () => {
     const input = 'XYZ789';
-    spyOn(service['scannerInputEventObservable'], 'next');
+    const nextSpy = jest.spyOn(service['scannerInputEventObservable'], 'next');
     service['finalizeScannerInput'](input);
     
-    expect(service['scannerInputEventObservable'].next).toHaveBeenCalledWith({
+    expect(nextSpy).toHaveBeenCalledWith({
       scannerInput: input,
       isTag: false
     });
