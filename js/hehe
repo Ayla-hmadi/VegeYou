@@ -1,118 +1,17 @@
-import { TestBed } from '@angular/core/testing';
-import { ScannerService } from './scanner.service';
-import { NotificationService } from '@feShared/components/notification/notification.service';
-import { Subject } from 'rxjs';
-import { KeyPressInputEvent } from './scanner-utils';
-
-describe('ScannerService', () => {
-  let service: ScannerService;
-  let mockNotificationService: jest.Mocked<NotificationService>;
-
-  beforeEach(() => {
-    mockNotificationService = {
-      notify: jest.fn(),
-    } as jest.Mocked<NotificationService>;
-    
-    TestBed.configureTestingModule({
-      providers: [
-        ScannerService,
-        { provide: NotificationService, useValue: mockNotificationService }
-      ]
-    });
-    service = TestBed.inject(ScannerService);
-  });
-
-  it('should be created', () => {
-    expect(service).toBeTruthy();
-  });
-
-  it('should handle key press and add to input buffer', () => {
-    const event: KeyPressInputEvent = {
-      key: 'A',
-      timestamp: 100,
-      shiftKey: false
-    };
-    service['lastTimestamp'] = null;
-    service['handleKeyPress'](event);
-    
-    expect(service['inputBuffer']).toBe('A');
-  });
-
-  it('should handle multiple fast key presses as scanner input', () => {
-    const event1: KeyPressInputEvent = {
-      key: 'A',
-      timestamp: 100,
-      shiftKey: false
-    };
-    const event2: KeyPressInputEvent = {
-      key: 'B',
-      timestamp: 120,
-      shiftKey: false
-    };
-
-    service['handleKeyPress'](event1);
-    service['handleKeyPress'](event2);
-
-    expect(service['inputBuffer']).toBe('AB');
-  });
-
-  it('should finalize scanner input on Enter key press', () => {
-    const event: KeyPressInputEvent = {
-      key: 'Enter',
-      timestamp: 150,
-      shiftKey: false
-    };
-    
-    service['inputBuffer'] = 'AB123';
-    const nextSpy = jest.spyOn(service['scannerInputEventObservable'], 'next');
-    
-    service['handleEnterKeyPress'](event);
-
-    expect(nextSpy).toHaveBeenCalledWith({
-      scannerInput: 'AB123',
-      isTag: false
-    });
-  });
-
-  it('should ignore human input on Enter key press when time difference is high', () => {
-    const event: KeyPressInputEvent = {
-      key: 'Enter',
-      timestamp: 200,
-      shiftKey: false
-    };
-
-    service['lastTimestamp'] = 100;
-    service['handleEnterKeyPress'](event);
-
-    expect(mockNotificationService.notify).not.toHaveBeenCalled();
-  });
-
-  it('should notify when no observers and scanner input is finalized', () => {
-    const event: KeyPressInputEvent = {
-      key: 'Enter',
-      timestamp: 120,
-      shiftKey: false
-    };
-    
-    service['inputBuffer'] = 'ABCD123';
-    
-    service['handleEnterKeyPress'](event);
-
-    expect(mockNotificationService.notify).toHaveBeenCalledWith(expect.objectContaining({
-      state: 'warning',
-      message: 'Are you trying to scan? Scanned ABCD123',
-      autoCloseTimer: 2000
-    }));
-  });
-
-  it('should emit scanner input event if observers exist', () => {
-    const input = 'XYZ789';
-    const nextSpy = jest.spyOn(service['scannerInputEventObservable'], 'next');
-    service['finalizeScannerInput'](input);
-    
-    expect(nextSpy).toHaveBeenCalledWith({
-      scannerInput: input,
-      isTag: false
-    });
-  });
-});
+module.exports = {
+  preset: 'jest-preset-angular',
+  setupFilesAfterEnv: ['<rootDir>/setup-jest.ts'],
+  moduleNameMapper: {
+    "^@feShared/(.*)$": "<rootDir>/src/app/shared/$1",
+    "^@app/(.*)$": "<rootDir>/src/app/$1"
+  },
+  testEnvironment: "jsdom",
+  transform: {
+    "^.+\\.(ts|js|html)$": "ts-jest"
+  },
+  globals: {
+    "ts-jest": {
+      tsconfig: "tsconfig.spec.json"
+    }
+  }
+};
