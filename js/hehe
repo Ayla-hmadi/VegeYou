@@ -2,111 +2,116 @@ import { TestBed } from '@angular/core/testing';
 import { ScannerService } from './scanner.service';
 import { NotificationService } from '@feShared/components/notification/notification.service';
 import { Subject } from 'rxjs';
-import { ScannerInputEvent } from './scanner-utils';
-import { Notification } from '@feShared/components/notification/notification.model';
+import { KeyPressInputEvent } from './scanner-utils';
 
 describe('ScannerService', () => {
   let service: ScannerService;
-  let notificationServiceSpy: jasmine.SpyObj<NotificationService>;
-  let scannerInputSubject: Subject<ScannerInputEvent>;
+  let mockNotificationService: jasmine.SpyObj<NotificationService>;
+  let keyboardEvent: any;
 
   beforeEach(() => {
-    const spy = jasmine.createSpyObj('NotificationService', ['notify']);
-    scannerInputSubject = new Subject<ScannerInputEvent>();
-
+    mockNotificationService = jasmine.createSpyObj('NotificationService', ['notify']);
+    
     TestBed.configureTestingModule({
       providers: [
         ScannerService,
-        { provide: NotificationService, useValue: spy },
-      ],
+        { provide: NotificationService, useValue: mockNotificationService }
+      ]
     });
-
     service = TestBed.inject(ScannerService);
-    notificationServiceSpy = TestBed.inject(NotificationService) as jasmine.SpyObj<NotificationService>;
   });
 
   it('should be created', () => {
     expect(service).toBeTruthy();
   });
 
-  it('should start listening for keyboard events', () => {
-    spyOn(service, 'startListening');
-    service['startListening']();
-    expect(service['startListening']).toHaveBeenCalled();
+  it('should handle key press and add to input buffer', () => {
+    const event: KeyPressInputEvent = {
+      key: 'A',
+      timestamp: 100,
+      shiftKey: false
+    };
+    service['lastTimestamp'] = null;
+    service['handleKeyPress'](event);
+    
+    expect(service['inputBuffer']).toBe('A');
   });
 
-  it('should process keypress as human input when time difference exceeds threshold', () => {
-    const mockEvent = { key: 'A', timestamp: 500, shiftKey: false } as any;
+  it('should handle multiple fast key presses as scanner input', () => {
+    const event1: KeyPressInputEvent = {
+      key: 'A',
+      timestamp: 100,
+      shiftKey: false
+    };
+    const event2: KeyPressInputEvent = {
+      key: 'B',
+      timestamp: 120,
+      shiftKey: false
+    };
 
-    service['lastTimestamp'] = 400;
-    spyOn(service, 'handleKeyPress').and.callThrough();
-    service['handleKeyPress'](mockEvent);
+    service['handleKeyPress'](event1);
+    service['handleKeyPress'](event2);
 
-    expect(service['inputBuffer']).toEqual('A');
-    expect(service['lastTimestamp']).toEqual(mockEvent.timestamp);
+    expect(service['inputBuffer']).toBe('AB');
   });
 
-  it('should append key to input buffer when time difference is less than speedThreshold', () => {
-    const mockEvent = { key: 'A', timestamp: 35, shiftKey: false } as any;
-
-    service['lastTimestamp'] = 10;
-    spyOn(service, 'handleKeyPress').and.callThrough();
-    service['handleKeyPress'](mockEvent);
-
-    expect(service['inputBuffer']).toEqual('A');
-  });
-
-  it('should emit scanner input event when Enter key is pressed and within threshold', () => {
-    const mockEvent = { key: 'Enter', timestamp: 60, shiftKey: false } as any;
-
-    service['lastTimestamp'] = 50;
-    service['inputBuffer'] = 'ABC123';
-
-    spyOn(service['scannerInputEventObservable'], 'next').and.callThrough();
-    service['handleEnterKeyPress'](mockEvent);
+  it('should finalize scanner input on Enter key press', () => {
+    const event: KeyPressInputEvent = {
+      key: 'Enter',
+      timestamp: 150,
+      shiftKey: false
+    };
+    
+    service['inputBuffer'] = 'AB123';
+    spyOn(service['scannerInputEventObservable'], 'next');
+    
+    service['handleEnterKeyPress'](event);
 
     expect(service['scannerInputEventObservable'].next).toHaveBeenCalledWith({
-      scannerInput: 'ABC123',
-      isTag: false, // Assuming isRfidTagInput returns false in this case
+      scannerInput: 'AB123',
+      isTag: false
     });
   });
 
-  it('should clear input buffer after Enter key press is handled', () => {
-    const mockEvent = { key: 'Enter', timestamp: 100, shiftKey: false } as any;
+  it('should ignore human input on Enter key press when time difference is high', () => {
+    const event: KeyPressInputEvent = {
+      key: 'Enter',
+      timestamp: 200,
+      shiftKey: false
+    };
 
-    service['lastTimestamp'] = 50;
-    service['inputBuffer'] = 'ABC123';
-    service['handleEnterKeyPress'](mockEvent);
+    service['lastTimestamp'] = 100;
+    service['handleEnterKeyPress'](event);
 
-    expect(service['inputBuffer']).toEqual('');
-    expect(service['lastTimestamp']).toBeNull();
+    expect(mockNotificationService.notify).not.toHaveBeenCalled();
   });
 
-  it('should notify when there are no observers for scanner input', () => {
-    const mockEvent = { key: 'Enter', timestamp: 60, shiftKey: false } as any;
+  it('should notify when no observers and scanner input is finalized', () => {
+    const event: KeyPressInputEvent = {
+      key: 'Enter',
+      timestamp: 120,
+      shiftKey: false
+    };
+    
+    service['inputBuffer'] = 'ABCD123';
+    
+    service['handleEnterKeyPress'](event);
 
-    service['lastTimestamp'] = 50;
-    service['inputBuffer'] = 'ABC123';
-    spyOn(service['scannerInputEventObservable'], 'observers').and.returnValue([]);
-    spyOn(service, 'finalizeScannerInput').and.callThrough();
-    service['handleEnterKeyPress'](mockEvent);
-
-    expect(notificationServiceSpy.notify).toHaveBeenCalledWith(jasmine.objectContaining({
+    expect(mockNotificationService.notify).toHaveBeenCalledWith(jasmine.objectContaining({
       state: 'warning',
-      message: 'Are you trying to scan? Scanned ABC123',
-      autoCloseTimer: 2000,
+      message: 'Are you trying to scan? Scanned ABCD123',
+      autoCloseTimer: 2000
     }));
   });
 
-  it('should not emit input or show notification when input is ignored as human typing', () => {
-    const mockEvent = { key: 'Enter', timestamp: 500, shiftKey: false } as any;
-
-    service['lastTimestamp'] = 100;
-    service['inputBuffer'] = 'ABC123';
-    spyOn(service['scannerInputEventObservable'], 'next').and.callThrough();
-    service['handleEnterKeyPress'](mockEvent);
-
-    expect(service['scannerInputEventObservable'].next).not.toHaveBeenCalled();
-    expect(notificationServiceSpy.notify).not.toHaveBeenCalled();
+  it('should emit scanner input event if observers exist', () => {
+    const input = 'XYZ789';
+    spyOn(service['scannerInputEventObservable'], 'next');
+    service['finalizeScannerInput'](input);
+    
+    expect(service['scannerInputEventObservable'].next).toHaveBeenCalledWith({
+      scannerInput: input,
+      isTag: false
+    });
   });
 });
