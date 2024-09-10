@@ -1,22 +1,90 @@
-it('should finalize scanner input on Enter key press', () => {
-  const enterKeyPressEvent: KeyPressInputEvent = {
-    key: 'Enter',
-    timestamp: 150,
-    shiftKey: false
-  };
-  
-  // Set the input buffer to simulate a scanned input
-  service['inputBuffer'] = 'AB123';
+import { TestBed } from '@angular/core/testing';
+import { of } from 'rxjs';
+import { ScannedInputService } from './scanned-input.service';
+import { AjaxService } from '../../../core/services/http/ajax.service.local';
+import { ScannerService } from '../../../core/services/scanner/scanner.service';
+import { ScannerInputEvent } from '../../../core/services/scanner/scanner-utils';
+import { environment } from '@feEnv';
 
-  // Simulate the last keypress timestamp to be within the threshold (set to less than 30ms before Enter)
-  service['lastTimestamp'] = 120; // Enter is at 150, so difference is 30ms (right on threshold)
+describe('ScannedInputService', () => {
+  let service: ScannedInputService;
+  let ajaxService: jest.Mocked<AjaxService>;
+  let scannerService: jest.Mocked<ScannerService>;
 
-  // Spy on the finalizeScannerInput method to see if it gets called
-  const finalizeSpy = jest.spyOn(service as any, 'finalizeScannerInput');
-  
-  // Call the handler for the Enter key press
-  service['handleEnterKeyPress'](enterKeyPressEvent);
+  beforeEach(() => {
+    // Mock AjaxService and ScannerService
+    ajaxService = {
+      get: jest.fn()
+    } as jest.Mocked<AjaxService>;
 
-  // Ensure finalizeScannerInput was called with the correct input buffer
-  expect(finalizeSpy).toHaveBeenCalledWith('AB123');
+    scannerService = {
+      getScannerObservable: jest.fn()
+    } as jest.Mocked<ScannerService>;
+
+    TestBed.configureTestingModule({
+      providers: [
+        ScannedInputService,
+        { provide: AjaxService, useValue: ajaxService },
+        { provide: ScannerService, useValue: scannerService }
+      ]
+    });
+
+    service = TestBed.inject(ScannedInputService);
+  });
+
+  it('should be created', () => {
+    expect(service).toBeTruthy();
+  });
+
+  it('should process RFID tag and call getRegistrationDataThroughTag', (done) => {
+    const scannerInputEvent: ScannerInputEvent = {
+      scannerInput: 'RFID123',
+      isTag: true
+    };
+
+    const ajaxResponse = { data: 'some RFID data' };
+    const expectedResult = {
+      res: ajaxResponse,
+      tag: 'RFID123'
+    };
+
+    // Mock ScannerService observable to return the scannerInputEvent
+    scannerService.getScannerObservable.mockReturnValue(of(scannerInputEvent));
+    // Mock AjaxService to return a response
+    ajaxService.get.mockReturnValue(of(ajaxResponse));
+
+    service.getScannedInputData().subscribe((result) => {
+      expect(result).toEqual(expectedResult);
+      done();
+    });
+
+    // Verify that AjaxService called the correct URL for RFID
+    expect(ajaxService.get).toHaveBeenCalledWith(environment.featureApi.registerItems().getRfidScan());
+  });
+
+  it('should process UPN and call getRegistrationDataThroughUpn', (done) => {
+    const scannerInputEvent: ScannerInputEvent = {
+      scannerInput: 'UPN123',
+      isTag: false
+    };
+
+    const ajaxResponse = { data: 'some UPN data' };
+    const expectedResult = {
+      res: ajaxResponse,
+      upn: 'UPN123'
+    };
+
+    // Mock ScannerService observable to return the scannerInputEvent
+    scannerService.getScannerObservable.mockReturnValue(of(scannerInputEvent));
+    // Mock AjaxService to return a response
+    ajaxService.get.mockReturnValue(of(ajaxResponse));
+
+    service.getScannedInputData().subscribe((result) => {
+      expect(result).toEqual(expectedResult);
+      done();
+    });
+
+    // Verify that AjaxService called the correct URL for UPN
+    expect(ajaxService.get).toHaveBeenCalledWith(environment.featureApi.registerItems().getUpnScan());
+  });
 });
